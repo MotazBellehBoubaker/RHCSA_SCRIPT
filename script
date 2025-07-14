@@ -1,0 +1,353 @@
+#!/bin/bash
+
+# RHCSA White Test Evaluation Script
+# Author: Motaz Belleh Bouabker
+# Date: July 13, 2025
+# Students run this script after completing their exam
+
+clear
+echo "============================================"
+echo "   RHCSA White Test Evaluation System"
+echo "============================================"
+echo ""
+
+# Collect student information
+read -p "Enter your full name: " STUDENT_NAME
+read -p "Enter your class: " STUDENT_CLASS
+read -p "Enter your email address: " STUDENT_EMAIL
+
+echo ""
+echo "Starting evaluation for $STUDENT_NAME..."
+echo "Please wait while we check your exam tasks..."
+echo ""
+
+# Initialize score variables
+TOTAL_SCORE=6
+MAX_SCORE=300
+PASSING_SCORE=195
+TASK_SCORE=14
+
+# Results arrays
+declare -A RESULTS
+declare -A OBJECTIVES
+
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN="7583815303:AAHPVtqSsouOgTDmiHCZWUd_PsUbPuBwxXU"
+TELEGRAM_CHAT_ID="7871432649"
+
+# Function to check and score tasks
+check_task() {
+    local task_name="$1"
+    local check_command="$2"
+    local points="$3"
+    local objective="$4"
+   
+    if eval "$check_command" &>/dev/null; then
+        TOTAL_SCORE=$((TOTAL_SCORE + points))
+        RESULTS["$task_name"]="PASS"
+        OBJECTIVES["$objective"]=$((${OBJECTIVES["$objective"]:-0} + points))
+        echo "✓ $task_name"
+        return 0
+    else
+        RESULTS["$task_name"]="FAIL"
+        echo "✗ $task_name"
+        return 1
+    fi
+}
+
+# Function to send message to Telegram
+send_telegram_message() {
+    local message="$1"
+    local url="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
+   
+    curl -s -X POST "$url" \
+        -d "chat_id=${TELEGRAM_CHAT_ID}" \
+        -d "text=${message}" \
+        -d "parse_mode=HTML" >/dev/null 2>&1
+}
+
+# Evaluate all exam tasks
+echo "Evaluating exam tasks:"
+echo "====================="
+
+# Task 1: Reset root password
+# Task 1: Root password reset (test using temporary user)
+TEMP_USER="checkuser"
+TEMP_PASS="temppass123"
+
+# Create a temp user only if it doesn't exist
+if ! id "$TEMP_USER" &>/dev/null; then
+    useradd "$TEMP_USER"
+    usermod -aG wheel checkuser
+
+    echo "$TEMP_PASS" | passwd --stdin "$TEMP_USER" &>/dev/null
+fi
+
+# Try to su from temp user to root with the test password
+echo "Testing root password from temporary user..."
+su - "$TEMP_USER" -c "echo 'trootent' | su - root -c 'whoami'" 2>/dev/null | grep -q root
+
+if [[ $? -eq 0 ]]; then
+    echo "✓ Root password reset"
+    TOTAL_SCORE=$((TOTAL_SCORE + TASK_SCORE))
+    RESULTS["Root password reset"]="PASS"
+    OBJECTIVES["Manage security"]=$((${OBJECTIVES["Manage security"]:-0} + TASK_SCORE))
+else
+    echo "✗ Root password reset"
+    RESULTS["Root password reset"]="FAIL"
+fi
+
+# Optional cleanup (you can comment this if you want to keep the user)
+userdel -rf "$TEMP_USER" &>/dev/null
+
+#----------------------------------------Done with Task 1--------------------------------------------
+
+# Task 2: Network configuration
+check_task "Network configuration" "ip addr show | grep -q '172.25.250.10' && hostname | grep -q 'servera.rhcsa.com'" $TASK_SCORE "Manage basic networking"
+
+#----------------------------------------Done with Task 2--------------------------------------------
+
+# Task 3: YUM repositories
+check_task "YUM repositories" "
+test -f /root/BaseOS.repo && test -f /root/AppStream.repo && \
+grep -q '^name *= *BaseOS' /root/BaseOS.repo && \
+grep -q '^baseurl *= *http://content.example.com/rhel9.0/x86_64/dvd/BaseOS' /root/BaseOS.repo && \
+grep -q '^enabled *= *1' /root/BaseOS.repo && \
+grep -q '^gpgcheck *= *0' /root/BaseOS.repo && \
+grep -q '^name *= *AppStream' /root/AppStream.repo && \
+grep -q '^baseurl *= *http://content.example.com/rhel9.0/x86_64/dvd/AppStream' /root/AppStream.repo && \
+grep -q '^enabled *= *1' /root/AppStream.repo && \
+grep -q '^gpgcheck *= *0' /root/AppStream.repo
+" $TASK_SCORE "Deploy, configure and maintain systems"
+
+#----------------------------------------Done with Task 3--------------------------------------------
+
+# Task 4: SELinux web server on port 82
+check_task "SELinux web server port 82" "systemctl is-enabled httpd &>/dev/null && firewall-cmd --list-ports | grep '\b82/tcp\b' | grep -q '82' && semanage port -l | grep '\b82\b' | grep -q '82'" $TASK_SCORE "Manage security"
+
+# Task 5: User accounts and groups
+check_task "User accounts and groups" "getent group sysadms &>/dev/null && id natasha | grep -q sysadms && id harry | grep -q sysadms && getent passwd sarah | grep -q '/sbin/nologin'" $TASK_SCORE "Manage users and groups"
+
+# Task 6: Cron job for natasha
+check_task "Cron job for natasha" "crontab -u natasha -l 2>/dev/null | grep -q '40 13.*logger.*EX200 in progress'" $TASK_SCORE "Operate running systems"
+
+# Task 7: Collaborative directory
+check_task "Collaborative directory" "test -d /home/manager && stat -c '%G' /home/manager | grep -q sysadms && test -g /home/manager" $TASK_SCORE "Manage users and groups"
+
+# Task 8: NTP configuration
+check_task "NTP configuration" "grep -Pq '^pool\s*africa\.pool\.ntp\.org\s*iburst' /etc/chrony.conf && systemctl is-active chronyd &>/dev/null" $TASK_SCORE "Operate running systems"
+# Task 9: AutoFS configuration
+check_task "AutoFS configuration" "test -f /root/AutoFS  &>/dev/null" $TASK_SCORE "Deploy, configure and maintain systems"
+
+# Task 10: User alex with UID 3456
+check_task "User alex with UID 3456" "id alex 2>/dev/null | grep -q 'uid=3456'" $TASK_SCORE "Manage users and groups"
+
+# Task 11: Files owned by harry
+check_task "Files owned by harry" "test -d /root/harry-files && find /root/harry-files -type f | head -1 | xargs ls -l 2>/dev/null | grep -q harry" $TASK_SCORE "Understand and use essential tools"
+
+# Task 12: Search for string 'ich'
+check_task "Search for string 'ich'" "test -f /root/lines && grep -q 'ich' /root/lines" $TASK_SCORE "Understand and use essential tools"
+
+# Task 13: Compressed archive
+check_task "Compressed archive" "test -f /root/backup.tar.bz2 && file /root/backup.tar.bz2 | grep -q 'bzip2'" $TASK_SCORE "Understand and use essential tools"
+
+# Task 14: Script file
+check_task "Script file" "test -f /bin/script.sh && test -x /bin/script.sh && test -d /root/d1 && test -g /root/d1" $TASK_SCORE "Understand and use essential tools"
+
+# Task 15: Container image (skipped)
+RESULTS["Container image creation"]="SKIP"
+echo "⚠ Container image creation (SKIPPED as instructed)"
+
+# Task 16: PDF converter container
+check_task "PDF converter container" \
+"id athena &>/dev/null && \
+ stat -c '%U:%G' /data | grep -q '^athena:athena$' && \
+ stat -c '%U:%G' /data/input | grep -q '^athena:athena$' && \
+ stat -c '%U:%G' /data/output | grep -q '^athena:athena$' && \
+ sudo -iu athena podman images | grep -q pdf" \
+$TASK_SCORE "Manage containers"
+
+# Task 17: Systemd service for container
+# Create /data/input/test.txt as athena
+sudo -u athena bash -c 'touch /data/input/test.txt && chown athena:athena /data/input/test.txt'
+sleep 2
+# Now check if container is running and output file exists
+check_task "Systemd service for container" \
+"ps faux | grep athena | grep -q conmon && test -f /data/output/test.pdf" \
+$TASK_SCORE "Manage containers"
+
+# Task 18: Swap partition
+check_task "Swap partition" "free -m  | grep '\bSwap\b' | grep -q '2559'" $TASK_SCORE "Configure local storage"
+
+# Task 19: Volume group and logical volumes
+check_task "Volume group and logical volumes" "vgdisplay vgfs &>/dev/null && lvdisplay vgfs/ext4vol &>/dev/null && lvdisplay vgfs/xfsvol &>/dev/null && mount | grep -q '/ext4vol' && mount | grep -q '/xfsvol'" $TASK_SCORE "Configure local storage"
+
+check_task "Volume group and logical volumes" "\
+vgdisplay vgfs &>/dev/null && \
+lvdisplay vgfs/ext4vol &>/dev/null && \
+lvdisplay vgfs/xfsvol &>/dev/null && \
+findmnt -n -T /ext4vol | grep -q 'ext4' && \
+findmnt -n -T /xfsvol | grep -q 'xfs'" \
+$TASK_SCORE "Create and configure file systems"
+
+
+
+# Task 20: Extend logical vol
+check_task "Volume group and logical volumes" "\
+vgdisplay vgfs &>/dev/null && \
+lvdisplay vgfs/ext4vol &>/dev/null && \
+lvdisplay vgfs/xfsvol &>/dev/null && \
+findmnt -n -T /ext4vol | grep -q 'ext4' && \
+findmnt -n -T /xfsvol | grep -q 'xfs'" \
+$TASK_SCORE "Create and configure file systems"
+
+# Task 21: System tuning
+check_task "System tuning" "tuned-adm active | grep 'aws' | grep -q 'aws'" $TASK_SCORE "Operate running systems"
+
+echo ""
+echo "Evaluation complete!"
+echo "===================="
+
+# ---------------------------Calculate percentages for each objective---------------------------
+declare -A OBJECTIVE_PERCENTAGES
+declare -A OBJECTIVE_MAX_POINTS
+
+# ------------------------Define maximum points per objective--------------------------------------------
+OBJECTIVE_MAX_POINTS["Manage basic networking"]=14
+OBJECTIVE_MAX_POINTS["Understand and use essential tools"]=56
+OBJECTIVE_MAX_POINTS["Operate running systems"]=42
+OBJECTIVE_MAX_POINTS["Configure local storage"]=28
+OBJECTIVE_MAX_POINTS["Create and configure file systems"]=28
+OBJECTIVE_MAX_POINTS["Deploy, configure and maintain systems"]=28
+OBJECTIVE_MAX_POINTS["Manage users and groups"]=42
+OBJECTIVE_MAX_POINTS["Manage security"]=28
+OBJECTIVE_MAX_POINTS["Manage containers"]=28
+
+# -----------------------------Calculate actual percentages---------------------------------------------
+for objective in "${!OBJECTIVE_MAX_POINTS[@]}"; do
+    achieved_points=${OBJECTIVES[$objective]:-0}
+    max_points=${OBJECTIVE_MAX_POINTS[$objective]}
+   
+    if [[ $max_points -gt 0 ]]; then
+        percentage=$((achieved_points * 100 / max_points))
+        OBJECTIVE_PERCENTAGES["$objective"]=$percentage
+    else
+        OBJECTIVE_PERCENTAGES["$objective"]=0
+    fi
+done
+
+# -----------------------------------Determine pass/fail------------------------------------------
+if [[ $TOTAL_SCORE -ge $PASSING_SCORE ]]; then
+    RESULT="PASS"
+    CONGRATULATIONS="🎉 Congratulations -- you have earned the Red Hat Certified System Administrator certification."
+else
+    RESULT="FAIL"
+    CONGRATULATIONS="❌ You have another try on Saturday 19 July."
+fi
+
+# ------------------------Display results to student------------------------------------------
+echo ""
+echo "========================================="
+echo "          EXAM RESULTS"
+echo "========================================="
+echo "Student: $STUDENT_NAME"
+echo "Class: $STUDENT_CLASS"
+echo "Score: $TOTAL_SCORE out of $MAX_SCORE points"
+echo "Result: $RESULT"
+echo ""
+if [[ $TOTAL_SCORE -ge $PASSING_SCORE ]]; then
+    echo "🎉 CONGRATULATIONS! You passed the exam!"
+    echo "You have earned the Red Hat Certified System Administrator certification."
+else
+    echo "❌ Unfortunately, you did not pass this time."
+    echo "You have another try on Saturday 19 July."
+fi
+echo ""
+echo "Performance on exam objectives:"
+echo "==============================="
+printf "%-45s %s\n" "Objective" "Score"
+printf "%-45s %s\n" "---------------------------------------------" "-----"
+printf "%-45s %s%%\n" "Manage basic networking" "${OBJECTIVE_PERCENTAGES["Manage basic networking"]}"
+printf "%-45s %s%%\n" "Understand and use essential tools" "${OBJECTIVE_PERCENTAGES["Understand and use essential tools"]}"
+printf "%-45s %s%%\n" "Operate running systems" "${OBJECTIVE_PERCENTAGES["Operate running systems"]}"
+printf "%-45s %s%%\n" "Configure local storage" "${OBJECTIVE_PERCENTAGES["Configure local storage"]}"
+printf "%-45s %s%%\n" "Create and configure file systems" "${OBJECTIVE_PERCENTAGES["Create and configure file systems"]}"
+printf "%-45s %s%%\n" "Deploy, configure and maintain systems" "${OBJECTIVE_PERCENTAGES["Deploy, configure and maintain systems"]}"
+printf "%-45s %s%%\n" "Manage users and groups" "${OBJECTIVE_PERCENTAGES["Manage users and groups"]}"
+printf "%-45s %s%%\n" "Manage security" "${OBJECTIVE_PERCENTAGES["Manage security"]}"
+printf "%-45s %s%%\n" "Manage containers" "${OBJECTIVE_PERCENTAGES["Manage containers"]}"
+echo "========================================="
+echo ""
+
+# -------------------------------------Save results to file-------------------------------------------------
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RESULTS_FILE="/root/exam_results_${STUDENT_NAME// /_}_$TIMESTAMP.txt"
+
+{
+    echo "RHCSA White Test Results"
+    echo "========================"
+    echo "Student: $STUDENT_NAME"
+    echo "Class: $STUDENT_CLASS"
+    echo "Email: $STUDENT_EMAIL"
+    echo "Date: $(date)"
+    echo "Score: $TOTAL_SCORE/$MAX_SCORE"
+    echo "Result: $RESULT"
+    echo ""
+    echo "Task Results:"
+    for task in "${!RESULTS[@]}"; do
+        echo "  $task: ${RESULTS[$task]}"
+    done
+    echo ""
+    echo "Performance on exam objectives:"
+    echo "Manage basic networking: ${OBJECTIVE_PERCENTAGES["Manage basic networking"]}%"
+    echo "Understand and use essential tools: ${OBJECTIVE_PERCENTAGES["Understand and use essential tools"]}%"
+    echo "Operate running systems: ${OBJECTIVE_PERCENTAGES["Operate running systems"]}%"
+    echo "Configure local storage: ${OBJECTIVE_PERCENTAGES["Configure local storage"]}%"
+    echo "Create and configure file systems: ${OBJECTIVE_PERCENTAGES["Create and configure file systems"]}%"
+    echo "Deploy, configure and maintain systems: ${OBJECTIVE_PERCENTAGES["Deploy, configure and maintain systems"]}%"
+    echo "Manage users and groups: ${OBJECTIVE_PERCENTAGES["Manage users and groups"]}%"
+    echo "Manage security: ${OBJECTIVE_PERCENTAGES["Manage security"]}%"
+    echo "Manage containers: ${OBJECTIVE_PERCENTAGES["Manage containers"]}%"
+} > "$RESULTS_FILE"
+
+# ----------------------------------Create Telegram message---------------------------------------------------
+TELEGRAM_MESSAGE="🎓 <b>EX200 RHCSA White Exam Results</b>
+
+👤 <b>Student:</b> $STUDENT_NAME
+📚 <b>Class:</b> $STUDENT_CLASS
+📧 <b>Email:</b> $STUDENT_EMAIL
+📅 <b>Date:</b> $(date '+%Y-%m-%d %H:%M:%S')
+
+🎯 <b>Passing Score:</b> $PASSING_SCORE
+📊 <b>Your Score:</b> $TOTAL_SCORE/$MAX_SCORE
+
+🏆 <b>Result:</b> $RESULT
+
+$CONGRATULATIONS
+
+📈 <b>Performance on exam objectives:</b>
+🌐 Manage basic networking: ${OBJECTIVE_PERCENTAGES["Manage basic networking"]}%
+🔧 Understand and use essential tools: ${OBJECTIVE_PERCENTAGES["Understand and use essential tools"]}%
+⚙️ Operate running systems: ${OBJECTIVE_PERCENTAGES["Operate running systems"]}%
+💾 Configure local storage: ${OBJECTIVE_PERCENTAGES["Configure local storage"]}%
+📁 Create and configure file systems: ${OBJECTIVE_PERCENTAGES["Create and configure file systems"]}%
+🚀 Deploy, configure and maintain systems: ${OBJECTIVE_PERCENTAGES["Deploy, configure and maintain systems"]}%
+👥 Manage users and groups: ${OBJECTIVE_PERCENTAGES["Manage users and groups"]}%
+🔒 Manage security: ${OBJECTIVE_PERCENTAGES["Manage security"]}%
+📦 Manage containers: ${OBJECTIVE_PERCENTAGES["Manage containers"]}%
+
+📝 <b>Instructor:</b> Motaz Belleh Bouabker"
+
+# ---------------------------------Send results to Telegram------------------------------------------------------
+echo "Sending results to Telegram..."
+if send_telegram_message "$TELEGRAM_MESSAGE"; then
+    echo "✅ Results sent to Telegram successfully!"
+else
+    echo "⚠ Failed to send results to Telegram. Please check your bot token and chat ID."
+fi
+
+echo ""
+echo "Results saved to: $RESULTS_FILE"
+echo "Thank you for taking the RHCSA White Test!"
+
+exit 0
