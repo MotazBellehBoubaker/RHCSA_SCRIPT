@@ -41,7 +41,7 @@ echo ""
 # Initialize score variables
 TOTAL_SCORE=20
 MAX_SCORE=300
-PASSING_SCORE=195
+PASSING_SCORE=210
 TASK_SCORE=14
 
 # Results arrays
@@ -375,3 +375,4 @@ echo "Results saved to: $RESULTS_FILE"
 echo "Thank you for taking the RHCSA White Test!"
 
 exit 0
+
