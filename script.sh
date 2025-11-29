@@ -16,23 +16,22 @@ read -p "Enter your full name: " STUDENT_NAME
 read -p "Enter your class: " STUDENT_CLASS
 read -p "Enter your email address: " STUDENT_EMAIL
 
-
 echo ""
-echo "Before starting, tell me your original swap size:"
-echo "1) 2 GB"
-echo "2) 4 GB"
+echo "Before starting, tell me your original swap size of your system:"
+echo "Enter the swap size in MB (e.g., 2048 for 2GB, 4096 for 4GB)"
 echo ""
 
-read -p "Enter 1 or 2: " SWAP_CHOICE
+read -p "Enter swap size in MB: " ORIGINAL_SWAP
 
-if [[ "$SWAP_CHOICE" != "1" && "$SWAP_CHOICE" != "2" ]]; then
-    echo "Invalid option. Please run the script again."
+# Validate that input is a number
+if ! [[ "$ORIGINAL_SWAP" =~ ^[0-9]+$ ]]; then
+    echo "Invalid input. Please enter a number in MB."
     exit 1
 fi
 
-echo "✓ Swap size selection saved."
+echo "✓ Original swap size: ${ORIGINAL_SWAP}MB"
+echo "✓ Expected new swap size: $((ORIGINAL_SWAP + 512))MB (original + 512MB)"
 echo ""
-
 
 echo ""
 echo "Starting evaluation for $STUDENT_NAME..."
@@ -40,7 +39,7 @@ echo "Please wait while we check your exam tasks..."
 echo ""
 
 # Initialize score variables
-TOTAL_SCORE=6
+TOTAL_SCORE=20
 MAX_SCORE=300
 PASSING_SCORE=195
 TASK_SCORE=14
@@ -89,7 +88,6 @@ echo "Evaluating exam tasks:"
 echo "====================="
 
 # Task 1: Reset root password
-# Task 1: Root password reset (test using temporary user)
 TEMP_USER="checkuser"
 TEMP_PASS="temppass123"
 
@@ -97,7 +95,6 @@ TEMP_PASS="temppass123"
 if ! id "$TEMP_USER" &>/dev/null; then
     useradd "$TEMP_USER"
     usermod -aG wheel checkuser
-
     echo "$TEMP_PASS" | passwd --stdin "$TEMP_USER" &>/dev/null
 fi
 
@@ -115,15 +112,11 @@ else
     RESULTS["Root password reset"]="FAIL"
 fi
 
-# Optional cleanup (you can comment this if you want to keep the user)
+# Optional cleanup
 userdel -rf "$TEMP_USER" &>/dev/null
-
-#----------------------------------------Done with Task 1--------------------------------------------
 
 # Task 2: Network configuration
 check_task "Network configuration" "ip addr show | grep -q '172.25.250.10' && hostname | grep -q 'servera.rhcsa.com'" $TASK_SCORE "Manage basic networking"
-
-#----------------------------------------Done with Task 2--------------------------------------------
 
 # Task 3: YUM repositories
 check_task "YUM repositories" "
@@ -137,8 +130,6 @@ grep -q '^baseurl *= *http://content.example.com/rhel9.0/x86_64/dvd/AppStream' /
 grep -q '^enabled *= *1' /root/AppStream.repo && \
 grep -q '^gpgcheck *= *0' /root/AppStream.repo
 " $TASK_SCORE "Deploy, configure and maintain systems"
-
-#----------------------------------------Done with Task 3--------------------------------------------
 
 # Task 4: SELinux web server on port 82
 check_task "SELinux web server port 82" "systemctl is-enabled httpd &>/dev/null && firewall-cmd --list-ports | grep '\b82/tcp\b' | grep -q '82' && semanage port -l | grep '\b82\b' | grep -q '82'" $TASK_SCORE "Manage security"
@@ -154,6 +145,7 @@ check_task "Collaborative directory" "test -d /home/manager && stat -c '%G' /hom
 
 # Task 8: NTP configuration
 check_task "NTP configuration" "grep -Pq '^pool\s*africa\.pool\.ntp\.org\s*iburst' /etc/chrony.conf && systemctl is-active chronyd &>/dev/null" $TASK_SCORE "Operate running systems"
+
 # Task 9: AutoFS configuration
 check_task "AutoFS configuration" "test -f /root/AutoFS  &>/dev/null" $TASK_SCORE "Deploy, configure and maintain systems"
 
@@ -169,8 +161,17 @@ check_task "Search for string 'ich'" "test -f /root/lines && grep -q 'ich' /root
 # Task 13: Compressed archive
 check_task "Compressed archive" "test -f /root/backup.tar.bz2 && file /root/backup.tar.bz2 | grep -q 'bzip2'" $TASK_SCORE "Understand and use essential tools"
 
-# Task 14: Script file
-check_task "Script file" "test -f /bin/script.sh && test -x /bin/script.sh && test -d /root/d1 && test -g /root/d1" $TASK_SCORE "Understand and use essential tools"
+# Task 14: Script file - Verify script exists, is executable, run it if needed, verify results and SGID
+check_task "Script file" "\
+test -f /bin/script.sh && \
+test -x /bin/script.sh && \
+(test -d /root/d1 || mkdir -p /root/d1) && \
+([[ \$(find /root/d1 -type f 2>/dev/null | wc -l) -gt 0 ]] || /bin/script.sh &>/dev/null) && \
+test -d /root/d1 && \
+test -g /root/d1 && \
+[[ \$(find /root/d1 -type f 2>/dev/null | wc -l) -gt 0 ]] && \
+find /root/d1 -type f -exec stat -c '%s' {} \; 2>/dev/null | awk '\$1 >= 3072 && \$1 <= 5120 {count++} END {exit (count > 0 ? 0 : 1)}'" \
+$TASK_SCORE "Understand and use essential tools"
 
 # Task 15: Container image (skipped)
 RESULTS["Container image creation"]="SKIP"
@@ -194,42 +195,32 @@ check_task "Systemd service for container" \
 "ps faux | grep athena | grep -q conmon && test -f /data/output/test.pdf" \
 $TASK_SCORE "Manage containers"
 
-# Task 18: Swap partition
-case $SWAP_CHOICE in
-    1)
-        # Original was 2GB, should now have 2GB + 512MB = ~2560MB total
-        EXPECTED_SWAP=2559
-        SWAP_DESCRIPTION="2GB + 512MB additional swap (total ~2560MB)"
-        check_task "Swap partition" "free -m | grep '\bSwap\b' | awk '{print \$2}' | grep -E '^(2559|2560|2561)$'" $TASK_SCORE "Configure local storage"
-        ;;
-    2)
-        # Original was 4GB, should now have 4GB + 512MB = ~4608MB total
-        EXPECTED_SWAP=4607
-        SWAP_DESCRIPTION="4GB + 512MB additional swap (total ~4608MB)"
-        check_task "Swap partition" "free -m | grep '\bSwap\b' | awk '{print \$2}' | grep -E '^(4607|4608|4609)$'" $TASK_SCORE "Configure local storage"
-        ;;
-esac
+# Task 18: Swap partition - Dynamic check based on user's original swap size
+EXPECTED_SWAP=$((ORIGINAL_SWAP + 512))
+TOLERANCE=2  # Allow ±2MB tolerance
 
-# Task 19: Volume group and logical volumes
-check_task "Volume group and logical volumes" "vgdisplay vgfs &>/dev/null && lvdisplay vgfs/ext4vol &>/dev/null && lvdisplay vgfs/xfsvol &>/dev/null && mount | grep -q '/ext4vol' && mount | grep -q '/xfsvol'" $TASK_SCORE "Configure local storage"
+check_task "Swap partition" "\
+CURRENT_SWAP=\$(free -m | grep '\bSwap\b' | awk '{print \$2}') && \
+[[ \$CURRENT_SWAP -ge $((EXPECTED_SWAP - TOLERANCE)) ]] && \
+[[ \$CURRENT_SWAP -le $((EXPECTED_SWAP + TOLERANCE)) ]]" \
+$TASK_SCORE "Configure local storage"
 
+# Task 19: Volume group and logical volumes - Combined check (FIXED - no longer duplicate)
 check_task "Volume group and logical volumes" "\
 vgdisplay vgfs &>/dev/null && \
 lvdisplay vgfs/ext4vol &>/dev/null && \
 lvdisplay vgfs/xfsvol &>/dev/null && \
 findmnt -n -T /ext4vol | grep -q 'ext4' && \
-findmnt -n -T /xfsvol | grep -q 'xfs'" \
-$TASK_SCORE "Create and configure file systems"
+findmnt -n -T /xfsvol | grep -q 'xfs' && \
+mount | grep -q '/ext4vol' && \
+mount | grep -q '/xfsvol'" \
+$TASK_SCORE "Configure local storage"
 
-
-
-# Task 20: Extend logical vol
-check_task "Volume group and logical volumes" "\
-vgdisplay vgfs &>/dev/null && \
-lvdisplay vgfs/ext4vol &>/dev/null && \
+# Task 20: Extend logical volume (xfsvol should be between 175M-190M)
+check_task "Extend logical volume xfsvol" "\
 lvdisplay vgfs/xfsvol &>/dev/null && \
-findmnt -n -T /ext4vol | grep -q 'ext4' && \
-findmnt -n -T /xfsvol | grep -q 'xfs'" \
+LV_SIZE=\$(lvdisplay vgfs/xfsvol | grep 'LV Size' | awk '{print \$3}' | sed 's/[<>]//g' | cut -d'.' -f1) && \
+[[ \$LV_SIZE -ge 175 ]] && [[ \$LV_SIZE -le 190 ]]" \
 $TASK_SCORE "Create and configure file systems"
 
 # Task 21: System tuning
@@ -243,16 +234,16 @@ echo "===================="
 declare -A OBJECTIVE_PERCENTAGES
 declare -A OBJECTIVE_MAX_POINTS
 
-# ------------------------Define maximum points per objective--------------------------------------------
-OBJECTIVE_MAX_POINTS["Manage basic networking"]=14
-OBJECTIVE_MAX_POINTS["Understand and use essential tools"]=56
-OBJECTIVE_MAX_POINTS["Operate running systems"]=42
-OBJECTIVE_MAX_POINTS["Configure local storage"]=28
-OBJECTIVE_MAX_POINTS["Create and configure file systems"]=28
-OBJECTIVE_MAX_POINTS["Deploy, configure and maintain systems"]=28
-OBJECTIVE_MAX_POINTS["Manage users and groups"]=42
-OBJECTIVE_MAX_POINTS["Manage security"]=28
-OBJECTIVE_MAX_POINTS["Manage containers"]=28
+# ------------------------Define maximum points per objective (CORRECTED)--------------------------------------------
+OBJECTIVE_MAX_POINTS["Manage basic networking"]=14           # Task 2
+OBJECTIVE_MAX_POINTS["Understand and use essential tools"]=56  # Tasks 11,12,13,14
+OBJECTIVE_MAX_POINTS["Operate running systems"]=42           # Tasks 6,8,21
+OBJECTIVE_MAX_POINTS["Configure local storage"]=28           # Tasks 18,19 (FIXED)
+OBJECTIVE_MAX_POINTS["Create and configure file systems"]=14 # Task 20 (FIXED)
+OBJECTIVE_MAX_POINTS["Deploy, configure and maintain systems"]=28  # Tasks 3,9
+OBJECTIVE_MAX_POINTS["Manage users and groups"]=42           # Tasks 5,7,10
+OBJECTIVE_MAX_POINTS["Manage security"]=28                   # Tasks 1,4
+OBJECTIVE_MAX_POINTS["Manage containers"]=28                 # Tasks 16,17
 
 # -----------------------------Calculate actual percentages---------------------------------------------
 for objective in "${!OBJECTIVE_MAX_POINTS[@]}"; do
@@ -289,9 +280,11 @@ echo ""
 if [[ $TOTAL_SCORE -ge $PASSING_SCORE ]]; then
     echo "🎉 CONGRATULATIONS! You passed the exam!"
     echo "You have earned the Red Hat Certified System Administrator certification."
+    echo "⭐ Be proud — this is not an easy exam, and you made it!"
 else
     echo "❌ Unfortunately, you did not pass this time."
-    echo "You have another try on Saturday 19 July."
+    echo "💡 But this is NOT a failure — it's feedback."
+    echo "Keep pushing. You're closer than you think."
 fi
 echo ""
 echo "Performance on exam objectives:"
