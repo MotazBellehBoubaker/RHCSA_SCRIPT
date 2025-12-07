@@ -11,24 +11,105 @@ echo "   RHCSA White Test Evaluation System"
 echo "============================================"
 echo ""
 
-# Collect student information
-read -p "Enter your full name: " STUDENT_NAME
-read -p "Enter your class: " STUDENT_CLASS
-read -p "Enter your email address: " STUDENT_EMAIL
+# Function to validate name (only letters and spaces)
+validate_name() {
+    local name="$1"
+    if [[ -z "$name" ]]; then
+        echo "Error: Name cannot be empty."
+        return 1
+    fi
+    if [[ ! "$name" =~ ^[a-zA-Z\ ]+$ ]]; then
+        echo "Error: Name can only contain letters and spaces."
+        return 1
+    fi
+    return 0
+}
+
+# Function to validate class (alphanumeric, spaces, and common class identifiers)
+validate_class() {
+    local class="$1"
+    if [[ -z "$class" ]]; then
+        echo "Error: Class cannot be empty."
+        return 1
+    fi
+    if [[ ! "$class" =~ ^[a-zA-Z0-9\ \-]+$ ]]; then
+        echo "Error: Class can only contain letters, numbers, spaces, and hyphens."
+        return 1
+    fi
+    return 0
+}
+
+# Function to validate email
+validate_email() {
+    local email="$1"
+    if [[ -z "$email" ]]; then
+        echo "Error: Email cannot be empty."
+        return 1
+    fi
+    if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        echo "Error: Invalid email format. Please enter a valid email address."
+        return 1
+    fi
+    return 0
+}
+
+# Function to validate swap size
+validate_swap() {
+    local swap="$1"
+    if [[ -z "$swap" ]]; then
+        echo "Error: Swap size cannot be empty."
+        return 1
+    fi
+    if ! [[ "$swap" =~ ^[0-9]+$ ]]; then
+        echo "Error: Swap size must be a number (in MB)."
+        return 1
+    fi
+    if [[ $swap -lt 512 ]] || [[ $swap -gt 32768 ]]; then
+        echo "Error: Swap size must be between 512 MB and 32768 MB (32 GB)."
+        return 1
+    fi
+    return 0
+}
+
+# Collect student information with validation
+while true; do
+    read -p "Enter your full name: " STUDENT_NAME
+    if validate_name "$STUDENT_NAME"; then
+        break
+    fi
+done
+
+while true; do
+    read -p "Enter your class: " STUDENT_CLASS
+    if validate_class "$STUDENT_CLASS"; then
+        break
+    fi
+done
+
+while true; do
+    read -p "Enter your email address: " STUDENT_EMAIL
+    if validate_email "$STUDENT_EMAIL"; then
+        break
+    fi
+done
 
 echo ""
 echo "Before starting, tell me your original swap size of your system:"
 echo "Enter the swap size in MB (e.g., 2048 for 2GB, 4096 for 4GB)"
+echo "Valid range: 512 MB to 32768 MB"
 echo ""
 
-read -p "Enter swap size in MB: " ORIGINAL_SWAP
+while true; do
+    read -p "Enter swap size in MB: " ORIGINAL_SWAP
+    if validate_swap "$ORIGINAL_SWAP"; then
+        break
+    fi
+done
 
-# Validate that input is a number
-if ! [[ "$ORIGINAL_SWAP" =~ ^[0-9]+$ ]]; then
-    echo "Invalid input. Please enter a number in MB."
-    exit 1
-fi
-
+echo ""
+echo "✓ Student Name: $STUDENT_NAME"
+echo "✓ Class: $STUDENT_CLASS"
+echo "✓ Email: $STUDENT_EMAIL"
 echo "✓ Original swap size: ${ORIGINAL_SWAP}MB"
 echo "✓ Expected new swap size: $((ORIGINAL_SWAP + 512))MB (original + 512MB)"
 echo ""
@@ -38,11 +119,22 @@ echo "Starting evaluation for $STUDENT_NAME..."
 echo "Please wait while we check your exam tasks..."
 echo ""
 
-# Initialize score variables
-TOTAL_SCORE=20
-MAX_SCORE=300
-PASSING_SCORE=210
-TASK_SCORE=14
+# Protected score variables - obfuscated and validated
+_s1=$(echo "MzAw" | base64 -d); _s2=$(echo "MjEw" | base64 -d)
+_chk=$(echo -n "rhcsa_white_2025" | md5sum | cut -d' ' -f1)
+eval "$(echo 'VE9UQUxfU0NPUkU9MA==' | base64 -d)"
+eval "$(echo 'TUFYX1NDT1JFPSRfczE=' | base64 -d)"
+eval "$(echo 'UEFTU0lOR19TQ09SRT0kX3My' | base64 -d)"
+readonly MAX_SCORE PASSING_SCORE
+
+# Integrity check function
+_verify_integrity() {
+    local _c=$(echo -n "rhcsa_white_2025" | md5sum | cut -d' ' -f1)
+    [[ "$_c" == "$_chk" ]] || { echo "System integrity check failed"; exit 1; }
+    [[ $MAX_SCORE -eq 300 ]] || { echo "Configuration error detected"; exit 1; }
+    [[ $PASSING_SCORE -eq 210 ]] || { echo "Configuration error detected"; exit 1; }
+}
+_verify_integrity
 
 # Results arrays
 declare -A RESULTS
@@ -63,11 +155,11 @@ check_task() {
         TOTAL_SCORE=$((TOTAL_SCORE + points))
         RESULTS["$task_name"]="PASS"
         OBJECTIVES["$objective"]=$((${OBJECTIVES["$objective"]:-0} + points))
-        echo "✓ $task_name"
+        echo "✓ $task_name ($points points)"
         return 0
     else
         RESULTS["$task_name"]="FAIL"
-        echo "✗ $task_name"
+        echo "✗ $task_name ($points points)"
         return 1
     fi
 }
@@ -87,165 +179,120 @@ send_telegram_message() {
 echo "Evaluating exam tasks:"
 echo "====================="
 
-# Task 1: Reset root password
+# Task 1: Reset root password - CRITICAL (18 points)
 TEMP_USER="checkuser"
 TEMP_PASS="temppass123"
 
-# Create a temp user only if it doesn't exist
 if ! id "$TEMP_USER" &>/dev/null; then
     useradd "$TEMP_USER"
     usermod -aG wheel checkuser
     echo "$TEMP_PASS" | passwd --stdin "$TEMP_USER" &>/dev/null
 fi
 
-# Try to su from temp user to root with the test password
 echo "Testing root password from temporary user..."
 su - "$TEMP_USER" -c "echo 'trootent' | su - root -c 'whoami'" 2>/dev/null | grep -q root
 
 if [[ $? -eq 0 ]]; then
-    echo "✓ Root password reset"
-    TOTAL_SCORE=$((TOTAL_SCORE + TASK_SCORE))
+    echo "✓ Root password reset (18 points)"
+    TOTAL_SCORE=$((TOTAL_SCORE + 18))
     RESULTS["Root password reset"]="PASS"
-    OBJECTIVES["Manage security"]=$((${OBJECTIVES["Manage security"]:-0} + TASK_SCORE))
+    OBJECTIVES["Manage security"]=$((${OBJECTIVES["Manage security"]:-0} + 18))
 else
-    echo "✗ Root password reset"
+    echo "✗ Root password reset (18 points)"
     RESULTS["Root password reset"]="FAIL"
 fi
 
-# Optional cleanup
 userdel -rf "$TEMP_USER" &>/dev/null
 
-# Task 2: Network configuration
-check_task "Network configuration" "ip addr show | grep -q '172.25.250.10' && hostname | grep -q 'servera.rhcsa.com'" $TASK_SCORE "Manage basic networking"
+# Task 2: Network configuration - CRITICAL (16 points)
+check_task "Network configuration" "ip addr show | grep -q '172.25.250.10' && hostname | grep -q 'servera.rhcsa.com'" 16 "Manage basic networking"
 
-# Task 3: YUM repositories
-check_task "YUM repositories" "
-test -f /root/BaseOS.repo && test -f /root/AppStream.repo && \
-grep -q '^name *= *BaseOS' /root/BaseOS.repo && \
-grep -q '^baseurl *= *http://content.example.com/rhel9.0/x86_64/dvd/BaseOS' /root/BaseOS.repo && \
-grep -q '^enabled *= *1' /root/BaseOS.repo && \
-grep -q '^gpgcheck *= *0' /root/BaseOS.repo && \
-grep -q '^name *= *AppStream' /root/AppStream.repo && \
-grep -q '^baseurl *= *http://content.example.com/rhel9.0/x86_64/dvd/AppStream' /root/AppStream.repo && \
-grep -q '^enabled *= *1' /root/AppStream.repo && \
-grep -q '^gpgcheck *= *0' /root/AppStream.repo
-" $TASK_SCORE "Deploy, configure and maintain systems"
+# Task 3: YUM repositories - CRITICAL (16 points)
+check_task "YUM repositories" "test -f /root/BaseOS.repo && test -f /root/AppStream.repo && grep -q '^name *= *BaseOS' /root/BaseOS.repo && grep -q '^baseurl *= *http://content.example.com/rhel9.0/x86_64/dvd/BaseOS' /root/BaseOS.repo && grep -q '^enabled *= *1' /root/BaseOS.repo && grep -q '^gpgcheck *= *0' /root/BaseOS.repo && grep -q '^name *= *AppStream' /root/AppStream.repo && grep -q '^baseurl *= *http://content.example.com/rhel9.0/x86_64/dvd/AppStream' /root/AppStream.repo && grep -q '^enabled *= *1' /root/AppStream.repo && grep -q '^gpgcheck *= *0' /root/AppStream.repo" 16 "Deploy, configure and maintain systems"
 
-# Task 4: SELinux web server on port 82
-check_task "SELinux web server port 82" "systemctl is-enabled httpd &>/dev/null && firewall-cmd --list-ports | grep '\b82/tcp\b' | grep -q '82' && semanage port -l | grep '\b82\b' | grep -q '82'" $TASK_SCORE "Manage security"
+# Task 4: SELinux web server on port 82 (16 points)
+check_task "SELinux web server port 82" "systemctl is-enabled httpd &>/dev/null && firewall-cmd --list-ports | grep '\b82/tcp\b' | grep -q '82' && semanage port -l | grep '\b82\b' | grep -q '82'" 16 "Manage security"
 
-# Task 5: User accounts and groups
-check_task "User accounts and groups" "getent group sysadms &>/dev/null && id natasha | grep -q sysadms && id harry | grep -q sysadms && getent passwd sarah | grep -q '/sbin/nologin'" $TASK_SCORE "Manage users and groups"
+# Task 5: User accounts and groups (14 points)
+check_task "User accounts and groups" "getent group sysadms &>/dev/null && id natasha | grep -q sysadms && id harry | grep -q sysadms && getent passwd sarah | grep -qE '(/bin/nologin|/sbin/nologin|/usr/sbin/nologin)'" 14 "Manage users and groups"
 
-# Task 6: Cron job for natasha
-check_task "Cron job for natasha" "crontab -u natasha -l 2>/dev/null | grep -q '40 13.*logger.*EX200 in progress'" $TASK_SCORE "Operate running systems"
+# Task 6: Cron job for natasha (12 points)
+check_task "Cron job for natasha" "crontab -u natasha -l 2>/dev/null | grep -q '40 13.*logger.*EX200 in progress'" 12 "Operate running systems"
 
-# Task 7: Collaborative directory
-check_task "Collaborative directory" "test -d /home/manager && stat -c '%G' /home/manager | grep -q sysadms && test -g /home/manager" $TASK_SCORE "Manage users and groups"
+# Task 7: Collaborative directory (14 points)
+check_task "Collaborative directory" "test -d /home/manager && stat -c '%G' /home/manager | grep -q sysadms && test -g /home/manager" 14 "Manage users and groups"
 
-# Task 8: NTP configuration
-check_task "NTP configuration" "grep -Pq '^pool\s*africa\.pool\.ntp\.org\s*iburst' /etc/chrony.conf && systemctl is-active chronyd &>/dev/null" $TASK_SCORE "Operate running systems"
+# Task 8: NTP configuration (14 points)
+check_task "NTP configuration" "grep -Pq '^pool\s*africa\.pool\.ntp\.org\s*iburst' /etc/chrony.conf && systemctl is-active chronyd &>/dev/null" 14 "Operate running systems"
 
-# Task 9: AutoFS configuration
-check_task "AutoFS configuration" "test -f /root/AutoFS  &>/dev/null" $TASK_SCORE "Deploy, configure and maintain systems"
+# Task 9: AutoFS configuration (16 points)
+check_task "AutoFS configuration" "test -f /root/AutoFS && grep -q '/etc/auto.master' /root/AutoFS && grep -qE '/etc/auto\.(misc|ldapuser)' /root/AutoFS" 16 "Deploy, configure and maintain systems"
 
-# Task 10: User alex with UID 3456
-check_task "User alex with UID 3456" "id alex 2>/dev/null | grep -q 'uid=3456'" $TASK_SCORE "Manage users and groups"
+# Task 10: User alex with UID 3456 (12 points)
+check_task "User alex with UID 3456" "id alex 2>/dev/null | grep -q 'uid=3456'" 12 "Manage users and groups"
 
-# Task 11: Files owned by harry
-check_task "Files owned by harry" "test -d /root/harry-files && find /root/harry-files -type f | head -1 | xargs ls -l 2>/dev/null | grep -q harry" $TASK_SCORE "Understand and use essential tools"
+# Task 11: Files owned by harry (10 points)
+check_task "Files owned by harry" "test -d /root/harry-files && find /root/harry-files -type f | head -1 | xargs ls -l 2>/dev/null | grep -q harry" 10 "Understand and use essential tools"
 
-# Task 12: Search for string 'ich'
-check_task "Search for string 'ich'" "test -f /root/lines && grep -q 'ich' /root/lines" $TASK_SCORE "Understand and use essential tools"
+# Task 12: Search for string 'ich' (10 points)
+check_task "Search for string 'ich'" "test -f /root/lines && grep -q 'ich' /root/lines" 10 "Understand and use essential tools"
 
-# Task 13: Compressed archive
-check_task "Compressed archive" "test -f /root/backup.tar.bz2 && file /root/backup.tar.bz2 | grep -q 'bzip2'" $TASK_SCORE "Understand and use essential tools"
+# Task 13: Compressed archive (12 points)
+check_task "Compressed archive" "test -f /root/backup.tar.bz2 && file /root/backup.tar.bz2 | grep -q 'bzip2'" 12 "Understand and use essential tools"
 
-# Task 14: Script file - Verify script exists, is executable, run it if needed, verify results and SGID
-check_task "Script file" "\
-test -f /bin/script.sh && \
-test -x /bin/script.sh && \
-(test -d /root/d1 || mkdir -p /root/d1) && \
-([[ \$(find /root/d1 -type f 2>/dev/null | wc -l) -gt 0 ]] || /bin/script.sh &>/dev/null) && \
-test -d /root/d1 && \
-test -g /root/d1 && \
-[[ \$(find /root/d1 -type f 2>/dev/null | wc -l) -gt 0 ]] && \
-find /root/d1 -type f -exec stat -c '%s' {} \; 2>/dev/null | awk '\$1 >= 3072 && \$1 <= 5120 {count++} END {exit (count > 0 ? 0 : 1)}'" \
-$TASK_SCORE "Understand and use essential tools"
+# Task 14: Script file (16 points)
+check_task "Script file" "test -f /bin/script.sh && test -x /bin/script.sh && (test -d /root/d1 || mkdir -p /root/d1) && ([[ \$(find /root/d1 -type f 2>/dev/null | wc -l) -gt 0 ]] || /bin/script.sh &>/dev/null) && test -d /root/d1 && test -g /root/d1 && [[ \$(find /root/d1 -type f 2>/dev/null | wc -l) -gt 0 ]] && find /root/d1 -type f -exec stat -c '%s' {} \; 2>/dev/null | awk '\$1 >= 3072 && \$1 <= 5120 {count++} END {exit (count > 0 ? 0 : 1)}'" 16 "Understand and use essential tools"
 
-# Task 15: Container image (skipped)
+# Task 15: Container image (EXCLUDED from scoring)
 RESULTS["Container image creation"]="SKIP"
-echo "⚠ Container image creation (SKIPPED as instructed)"
+echo "⚠ Container image creation (EXCLUDED from scoring as instructed)"
 
-# Task 16: PDF converter container
-check_task "PDF converter container" \
-"id athena &>/dev/null && \
- stat -c '%U:%G' /data | grep -q '^athena:athena$' && \
- stat -c '%U:%G' /data/input | grep -q '^athena:athena$' && \
- stat -c '%U:%G' /data/output | grep -q '^athena:athena$' && \
- sudo -iu athena podman images | grep -q pdf" \
-$TASK_SCORE "Manage containers"
+# Task 16: PDF converter container (16 points)
+check_task "PDF converter container" "id athena &>/dev/null && test -d /data && test -d /data/input && test -d /data/output && stat -c '%U:%G' /data | grep -q '^athena:athena' && stat -c '%U:%G' /data/input | grep -q '^athena:athena' && stat -c '%U:%G' /data/output | grep -q '^athena:athena' && sudo -iu athena podman images | grep -q pdf" 16 "Manage containers"
 
-# Task 17: Systemd service for container
-# Create /data/input/test.txt as athena
-sudo -u athena bash -c 'touch /data/input/test.txt && chown athena:athena /data/input/test.txt'
-sleep 2
-# Now check if container is running and output file exists
-check_task "Systemd service for container" \
-"ps faux | grep athena | grep -q conmon && test -f /data/output/test.pdf" \
-$TASK_SCORE "Manage containers"
+# Task 17: Systemd service for container (20 points)
+if id athena &>/dev/null && test -d /data/input; then
+    sudo -u athena bash -c 'touch /data/input/test.txt && chown athena:athena /data/input/test.txt' 2>/dev/null
+    sleep 2
+fi
 
-# Task 18: Swap partition - Dynamic check based on user's original swap size
+check_task "Systemd service for container" "ps faux | grep athena | grep -q conmon && test -f /data/output/test.pdf" 18 "Manage containers"
+
+# Task 18: Swap partition (16 points)
 EXPECTED_SWAP=$((ORIGINAL_SWAP + 512))
-TOLERANCE=2  # Allow ±2MB tolerance
+TOLERANCE=2
 
-check_task "Swap partition" "\
-CURRENT_SWAP=\$(free -m | grep '\bSwap\b' | awk '{print \$2}') && \
-[[ \$CURRENT_SWAP -ge $((EXPECTED_SWAP - TOLERANCE)) ]] && \
-[[ \$CURRENT_SWAP -le $((EXPECTED_SWAP + TOLERANCE)) ]]" \
-$TASK_SCORE "Configure local storage"
+check_task "Swap partition" "CURRENT_SWAP=\$(free -m | grep '\bSwap\b' | awk '{print \$2}') && [[ \$CURRENT_SWAP -ge $((EXPECTED_SWAP - TOLERANCE)) ]] && [[ \$CURRENT_SWAP -le $((EXPECTED_SWAP + TOLERANCE)) ]]" 16 "Configure local storage"
 
-# Task 19: Volume group and logical volumes - Combined check (FIXED - no longer duplicate)
-check_task "Volume group and logical volumes" "\
-vgdisplay vgfs &>/dev/null && \
-lvdisplay vgfs/ext4vol &>/dev/null && \
-lvdisplay vgfs/xfsvol &>/dev/null && \
-findmnt -n -T /ext4vol | grep -q 'ext4' && \
-findmnt -n -T /xfsvol | grep -q 'xfs' && \
-mount | grep -q '/ext4vol' && \
-mount | grep -q '/xfsvol'" \
-$TASK_SCORE "Configure local storage"
+# Task 19: Volume group and logical volumes (18 points)
+check_task "Volume group and logical volumes" "vgdisplay vgfs &>/dev/null && lvdisplay vgfs/ext4vol &>/dev/null && lvdisplay vgfs/xfsvol &>/dev/null && findmnt -n -T /ext4vol | grep -q 'ext4' && findmnt -n -T /xfsvol | grep -q 'xfs' && mount | grep -q '/ext4vol' && mount | grep -q '/xfsvol'" 18 "Configure local storage"
 
-# Task 20: Extend logical volume (xfsvol should be between 175M-190M)
-check_task "Extend logical volume xfsvol" "\
-lvdisplay vgfs/xfsvol &>/dev/null && \
-LV_SIZE=\$(lvdisplay vgfs/xfsvol | grep 'LV Size' | awk '{print \$3}' | sed 's/[<>]//g' | cut -d'.' -f1) && \
-[[ \$LV_SIZE -ge 175 ]] && [[ \$LV_SIZE -le 190 ]]" \
-$TASK_SCORE "Create and configure file systems"
+# Task 20: Extend logical volume - CRITICAL (18 points)
+check_task "Extend logical volume xfsvol" "lvdisplay vgfs/xfsvol &>/dev/null && LV_SIZE=\$(lvdisplay vgfs/xfsvol | grep 'LV Size' | awk '{print \$3}' | sed 's/[<>]//g' | cut -d'.' -f1) && [[ \$LV_SIZE -ge 175 ]] && [[ \$LV_SIZE -le 190 ]]" 18 "Create and configure file systems"
 
-# Task 21: System tuning
-check_task "System tuning" "tuned-adm active | grep 'aws' | grep -q 'aws'" $TASK_SCORE "Operate running systems"
+
+# Task 21: System tuning (18 points)
+check_task "System tuning" "tuned-adm active | grep 'aws' | grep -q 'aws'" 18 "Operate running systems"
 
 echo ""
 echo "Evaluation complete!"
 echo "===================="
 
-# ---------------------------Calculate percentages for each objective---------------------------
+_verify_integrity
+
 declare -A OBJECTIVE_PERCENTAGES
 declare -A OBJECTIVE_MAX_POINTS
 
-# ------------------------Define maximum points per objective (CORRECTED)--------------------------------------------
-OBJECTIVE_MAX_POINTS["Manage basic networking"]=14           # Task 2
-OBJECTIVE_MAX_POINTS["Understand and use essential tools"]=56  # Tasks 11,12,13,14
-OBJECTIVE_MAX_POINTS["Operate running systems"]=42           # Tasks 6,8,21
-OBJECTIVE_MAX_POINTS["Configure local storage"]=28           # Tasks 18,19 (FIXED)
-OBJECTIVE_MAX_POINTS["Create and configure file systems"]=14 # Task 20 (FIXED)
-OBJECTIVE_MAX_POINTS["Deploy, configure and maintain systems"]=28  # Tasks 3,9
-OBJECTIVE_MAX_POINTS["Manage users and groups"]=42           # Tasks 5,7,10
-OBJECTIVE_MAX_POINTS["Manage security"]=28                   # Tasks 1,4
-OBJECTIVE_MAX_POINTS["Manage containers"]=28                 # Tasks 16,17
+OBJECTIVE_MAX_POINTS["Manage basic networking"]=16
+OBJECTIVE_MAX_POINTS["Understand and use essential tools"]=48
+OBJECTIVE_MAX_POINTS["Operate running systems"]=44
+OBJECTIVE_MAX_POINTS["Configure local storage"]=34
+OBJECTIVE_MAX_POINTS["Create and configure file systems"]=18
+OBJECTIVE_MAX_POINTS["Deploy, configure and maintain systems"]=32
+OBJECTIVE_MAX_POINTS["Manage users and groups"]=40
+OBJECTIVE_MAX_POINTS["Manage security"]=34
+OBJECTIVE_MAX_POINTS["Manage containers"]=34
 
-# -----------------------------Calculate actual percentages---------------------------------------------
 for objective in "${!OBJECTIVE_MAX_POINTS[@]}"; do
     achieved_points=${OBJECTIVES[$objective]:-0}
     max_points=${OBJECTIVE_MAX_POINTS[$objective]}
@@ -258,7 +305,6 @@ for objective in "${!OBJECTIVE_MAX_POINTS[@]}"; do
     fi
 done
 
-# -----------------------------------Determine pass/fail------------------------------------------
 if [[ $TOTAL_SCORE -ge $PASSING_SCORE ]]; then
     RESULT="PASS"
     CONGRATULATIONS="🎉 Congratulations -- you have earned the Red Hat Certified System Administrator certification."
@@ -267,7 +313,6 @@ else
     CONGRATULATIONS="❌ You have another try on Saturday 19 July."
 fi
 
-# ------------------------Display results to student------------------------------------------
 echo ""
 echo "========================================="
 echo "          EXAM RESULTS"
@@ -303,7 +348,6 @@ printf "%-45s %s%%\n" "Manage containers" "${OBJECTIVE_PERCENTAGES["Manage conta
 echo "========================================="
 echo ""
 
-# -------------------------------------Save results to file-------------------------------------------------
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESULTS_FILE="/root/exam_results_${STUDENT_NAME// /_}_$TIMESTAMP.txt"
 
@@ -334,7 +378,6 @@ RESULTS_FILE="/root/exam_results_${STUDENT_NAME// /_}_$TIMESTAMP.txt"
     echo "Manage containers: ${OBJECTIVE_PERCENTAGES["Manage containers"]}%"
 } > "$RESULTS_FILE"
 
-# ----------------------------------Create Telegram message---------------------------------------------------
 TELEGRAM_MESSAGE="🎓 <b>EX200 RHCSA White Exam Results</b>
 
 👤 <b>Student:</b> $STUDENT_NAME
@@ -362,7 +405,6 @@ $CONGRATULATIONS
 
 📝 <b>Instructor:</b> Motaz Belleh Bouabker"
 
-# ---------------------------------Send results to Telegram------------------------------------------------------
 echo "Sending results to Telegram..."
 if send_telegram_message "$TELEGRAM_MESSAGE"; then
     echo "✅ Results sent to Telegram successfully!"
@@ -375,4 +417,3 @@ echo "Results saved to: $RESULTS_FILE"
 echo "Thank you for taking the RHCSA White Test!"
 
 exit 0
-
