@@ -2,7 +2,7 @@
 
 # RHCSA White Test Evaluation Script
 # Author: Motaz Belleh Bouabker
-# Date: November 30, 2025
+# Date: 12/09/2025
 # Students run this script after completing their exam
 
 clear
@@ -417,3 +417,4 @@ echo "Results saved to: $RESULTS_FILE"
 echo "Thank you for taking the RHCSA White Test!"
 
 exit 0
+
